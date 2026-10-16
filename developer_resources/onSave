@@ -1,0 +1,349 @@
+#!/usr/bin/env bash
+################################################################################
+# <START METADATA>
+# @file_name: onSave
+# @version: 1.0.36
+# @description: Automated save editing with bash formatting for qb-compile repository
+# @project_name: qb-compile
+#
+# @save_tasks:
+#  automated_versioning: true
+#  automated_documentation: false
+#  automated_formatting: true
+#
+# @build_tasks:
+#  automated_comment_strip: false
+#  automated_encryption: false
+#
+# @author: Jason Matthews (JMSolo)
+#
+# @license: MIT (Included in LICENSE)
+# Copyright (C) 2019-2025, QuickBox.IO
+# All rights reserved.
+# <END METADATA>
+# shellcheck disable=SC2086,SC2312
+################################################################################
+
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+# Try to enable inherit_errexit if available
+shopt -s inherit_errexit 2>/dev/null || true
+
+# Prevent multiple runs by creating a lock file
+declare -g lockfile="/tmp/onsave_${1##*/}"
+if [[ -f "${lockfile}" ]]; then
+  printf "%s\n" "DEBUG: Lock file exists, another instance is running, exiting"
+  exit 0
+fi
+touch "${lockfile}"
+trap 'rm -f "${lockfile}"' EXIT
+
+# Check if we're being called from the correct workspace
+if [[ ! -f "${PWD}/developer_resources/format-bash.sh" ]]; then
+  exit 0
+fi
+
+################################################################################
+# @description: loads variables for save script
+# @arg: $1: file
+# @arg: $2: workspace
+################################################################################
+load::variables() {
+  declare -g file="${1}"
+  declare -g filename="${file##*/}"
+  declare -g workspace="${2}"
+}
+
+################################################################################
+# @description: parses variables from supplied file for post-process
+# @noargs
+################################################################################
+parse::meta_data() {
+  declare variable value parse
+  declare -a auto_variables
+
+  if grep -q '@save_tasks' "${file}"; then
+    declare -g type=newmeta
+    # Handle bash-style metadata - look for @save_tasks and parse until the next ################################################################################
+    while IFS='' read -r line; do
+      auto_variables+=("${line}")
+    done < <(sed -n -e '/\@save_tasks/,/^################################################################################$/ p' "${file}" | sed -e 's/^[[:space:]]*#*[[:space:]]*//' | grep -v '^$' | grep -v '^@save_tasks' | grep -v '^################################################################################$' | grep -v '^@[a-z]')
+
+    # Set variables directly
+    for parse in "${auto_variables[@]}"; do
+      if [[ "${parse}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*: ]]; then
+        variable=$(echo "${parse,,}" | cut -d: -f1 | tr -d ' ')
+        value=$(echo "${parse}" | cut -d: -f2 | tr -d ' ')
+        if [[ "${variable}" == "automated_versioning" ]]; then
+          declare -g automated_versioning="${value}"
+        elif [[ "${variable}" == "automated_formatting" ]]; then
+          declare -g automated_formatting="${value}"
+        fi
+      fi
+    done
+  elif grep -q 'Save Tasks' "${file}"; then
+    declare -g type=oldmeta
+    while IFS='' read -r line; do
+      auto_variables+=("${line}")
+    done < <(sed -n -e '/Save\ Tasks/,/Author:/ p' "${file}" | head -n -2 | tail -n +2 | sed -e 's/: /=/g' | tr -d "# ")
+
+    for parse in "${auto_variables[@]}"; do
+      if [[ "${parse}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*= ]]; then
+        variable=$(echo "${parse,,}" | cut -f1 -d=)
+        value=$(echo "${parse,,}" | cut -f2- -d=)
+        if [[ "${variable}" == "automated_versioning" ]]; then
+          declare -g automated_versioning="${value}"
+        elif [[ "${variable}" == "automated_formatting" ]]; then
+          declare -g automated_formatting="${value}"
+        fi
+      fi
+    done
+  fi
+}
+
+################################################################################
+# @description: automated incrementation of necessary file version information
+# @noargs
+################################################################################
+save::versioning() {
+  declare version_old version_number version_split version_new
+
+  # Update the version number in the ~.github/version.txt file on every save
+  if [[ -f "${workspace}/.github/version.txt" ]]; then
+    version_old=$(head -n 1 "${workspace}/.github/version.txt" | tr -d " ")
+    if [[ -n "${version_old}" ]]; then
+      version_number=$(echo "${version_old}" | grep -Eo '[0-9]+$')
+      if [[ -n "${version_number}" ]]; then
+        version_number=$(("${version_number}" + 1))
+        version_split=$(echo "${version_old}" | grep -o '.*[.]')
+        version_new="${version_split}${version_number}"
+        echo "${version_new}" >"${workspace}/.github/version.txt"
+        printf "%s\n" "DEBUG: Updated .github/version.txt from ${version_old} to ${version_new}"
+      fi
+    fi
+  fi
+
+  # Now always sync this version to the version in the ~qb-compile.sh file
+  if [[ -f "${workspace}/qb-compile.sh" ]]; then
+    version_file=$(head -n 1 "${workspace}/.github/version.txt" | tr -d " ")
+    sed -i "s/# @version: [0-9]\+\.[0-9]\+\.[0-9]\+/# @version: ${version_file}/" "${workspace}/qb-compile.sh"
+    printf "%s\n" "DEBUG: Synchronized qb-compile.sh version to ${version_file}"
+  fi
+
+  if [[ ${automated_versioning:-} == "true" && ${type:-} == "newmeta" ]]; then
+    # Handle bash files with # @version: format
+    if grep -q '# @version:' "${file}"; then
+      # Re-read the file to get current version after formatting
+      version_old=$(grep -o '# @version: [0-9]\+\.[0-9]\+\.[0-9]\+' "${file}" | head -n 1 | cut -d: -f2 | tr -d " ")
+      printf "%s\n" "DEBUG: Found version_old: '${version_old}'"
+      if [[ -n "${version_old}" ]]; then
+        version_number=$(echo "${version_old}" | grep -Eo '[0-9]+$')
+        printf "%s\n" "DEBUG: Found version_number: '${version_number}'"
+        if [[ -n "${version_number}" ]]; then
+          version_number=$(("${version_number}" + 1))
+          version_split=$(echo "${version_old}" | grep -o '.*[.]')
+          version_new="${version_split}${version_number}"
+          printf "%s\n" "DEBUG: Will replace '${version_old}' with '${version_new}'"
+          printf "%s\n" "DEBUG: Running sed command: sed -i \"s/# @version: ${version_old}/# @version: ${version_new}/\" \"${file}\""
+          sed -i "s/# @version: ${version_old}/# @version: ${version_new}/" "${file}"
+          printf "%s\n" "DEBUG: sed command completed, exit code: $?"
+
+          # Verify the change was actually made
+          current_version=$(grep -o '# @version: [0-9]\+\.[0-9]\+\.[0-9]\+' "${file}" | head -n 1 | cut -d: -f2 | tr -d " ")
+          printf "%s\n" "DEBUG: After sed, file now contains version: '${current_version}'"
+
+          printf "%s\n" "${filename} version increased from ${version_old} to ${version_new}"
+        fi
+      fi
+    fi
+  elif [[ ${automated_versioning:-} == "true" && ${type:-} == "oldmeta" ]]; then
+    version_old=$(grep -o '# File Version: [0-9]\+\.[0-9]\+\.[0-9]\+' "${file}" | head -n 1 | cut -d: -f2 | tr -d " ")
+    if [[ -n "${version_old}" ]]; then
+      version_number=$(echo "${version_old}" | grep -Eo '[0-9]+$')
+      if [[ -n "${version_number}" ]]; then
+        version_number=$(("${version_number}" + 1))
+        version_split=$(echo "${version_old}" | grep -o '.*[.]')
+        version_new="${version_split}${version_number}"
+        sed -i "s/# File Version: [0-9]\+\.[0-9]\+\.[0-9]\+/# File Version: ${version_new}/" "${file}"
+        printf "%s\n" "${filename} version increased from ${version_old} to ${version_new}"
+      fi
+    fi
+  fi
+}
+
+################################################################################
+# @description: automated formatting for shell scripts
+# @noargs
+################################################################################
+save::formatting() {
+  if [[ ${automated_formatting:-} == "true" ]]; then
+    if [[ $(head -n1 "${file}") =~ bash ]] || [[ "${filename}" == *.sh ]]; then
+      printf "%s\n" "Formatting bash script: ${filename}"
+
+      # Check if shfmt is available
+      if ! command -v shfmt &>/dev/null; then
+        printf "%s\n" "shfmt not found. Installing shfmt..."
+        install_shfmt
+      fi
+
+      # Format the file with shfmt using consistent settings
+      if shfmt -i 2 -w "${file}" 2>/dev/null; then
+        printf "%s\n" "Successfully formatted ${filename} with shfmt"
+      else
+        printf "%s\n" "Warning: shfmt formatting failed for ${filename}"
+        # Fallback to basic cleanup
+        basic_bash_cleanup "${file}"
+      fi
+    fi
+  fi
+}
+
+################################################################################
+# @description: Install shfmt if not available
+# @noargs
+################################################################################
+install_shfmt() {
+  # Try to install shfmt via go
+  if command -v go &>/dev/null; then
+    go install mvdan.cc/sh/v3/cmd/shfmt@latest
+    # Add to PATH if not already there
+    if [[ ":$PATH:" != *":$HOME/go/bin:"* ]]; then
+      export PATH="$HOME/go/bin:$PATH"
+    fi
+  else
+    # Fallback to direct download
+    local shfmt_version="v3.8.0"
+    local arch
+    arch=$(uname -m)
+
+    case "${arch}" in
+    x86_64) arch="amd64" ;;
+    aarch64) arch="arm64" ;;
+    *) arch="amd64" ;; # Default fallback
+    esac
+
+    local os
+    os=$(uname -s | tr '[:upper:]' '[:lower:]')
+
+    local download_url="https://github.com/mvdan/sh/releases/download/${shfmt_version}/shfmt_${shfmt_version}_${os}_${arch}"
+
+    printf "%s\n" "Downloading shfmt ${shfmt_version} for ${os}_${arch}..."
+    if curl -L -o /tmp/shfmt "${download_url}"; then
+      chmod +x /tmp/shfmt
+      sudo mv /tmp/shfmt /usr/local/bin/shfmt
+      printf "%s\n" "shfmt installed successfully"
+    else
+      printf "%s\n" "Failed to install shfmt. Using basic cleanup only."
+    fi
+  fi
+}
+
+################################################################################
+# @description: Clean up bash file after formatting
+# @arg: $1: file path
+################################################################################
+cleanup_bash_file() {
+  local file_path="${1}"
+
+  # Ensure proper shebang line
+  if [[ ! $(head -n1 "${file_path}") =~ ^#!/ ]]; then
+    # Add shebang if missing
+    sed -i '1i#!/usr/bin/env bash' "${file_path}"
+    printf "%s\n" "Added missing shebang to ${filename}"
+  fi
+
+  # Ensure strict mode is present (add if missing)
+  if ! grep -q "set -Eeuo pipefail" "${file_path}"; then
+    # Find the first line after shebang and comments
+    local insert_line
+    insert_line=$(grep -n "^[^#]" "${file_path}" | head -n1 | cut -d: -f1)
+    if [[ -n "${insert_line}" ]]; then
+      sed -i "${insert_line}i\\set -Eeuo pipefail" "${file_path}"
+      printf "%s\n" "Added strict mode to ${filename}"
+    fi
+  fi
+
+  # Ensure IFS is set properly
+  if ! grep -q "IFS=" "${file_path}"; then
+    # Find the first line after shebang and comments
+    local insert_line
+    insert_line=$(grep -n "^[^#]" "${file_path}" | head -n1 | cut -d: -f1)
+    if [[ -n "${insert_line}" ]]; then
+      sed -i "${insert_line}i\\IFS=\$'\\n\\t'" "${file_path}"
+      printf "%s\n" "Added IFS setting to ${filename}"
+    fi
+  fi
+
+  # Ensure inherit_errexit is set if available
+  if ! grep -q "inherit_errexit" "${file_path}"; then
+    # Find the first line after shebang and comments
+    local insert_line
+    insert_line=$(grep -n "^[^#]" "${file_path}" | head -n1 | cut -d: -f1)
+    if [[ -n "${insert_line}" ]]; then
+      sed -i "${insert_line}i\\shopt -s inherit_errexit 2>/dev/null || true" "${file_path}"
+      printf "%s\n" "Added inherit_errexit setting to ${filename}"
+    fi
+  fi
+
+  # Remove trailing whitespace
+  sed -i 's/[[:space:]]\+$//' "${file_path}"
+
+  # Ensure file ends with newline
+  if [[ -s "${file_path}" ]] && [[ $(tail -c1 "${file_path}" | wc -l) -eq 0 ]]; then
+    echo >>"${file_path}"
+    printf "%s\n" "Added trailing newline to ${filename}"
+  fi
+
+  # Ensure proper file permissions
+  chmod +x "${file_path}" 2>/dev/null || true
+}
+
+################################################################################
+# @description: Basic bash file cleanup when shfmt is not available
+# @arg: $1: file path
+################################################################################
+basic_bash_cleanup() {
+  local file_path="${1}"
+
+  # Convert tabs to spaces
+  sed -i 's/\t/    /g' "${file_path}"
+
+  # Remove trailing whitespace
+  sed -i 's/[[:space:]]\+$//' "${file_path}"
+
+  # Ensure file ends with newline
+  if [[ -s "${file_path}" ]] && [[ $(tail -c1 "${file_path}" | wc -l) -eq 0 ]]; then
+    echo >>"${file_path}"
+  fi
+
+  # Ensure proper file permissions
+  chmod +x "${file_path}" 2>/dev/null || true
+
+  printf "%s\n" "Applied basic cleanup to ${filename}"
+}
+
+################################################################################
+# @description: calls functions in required order
+################################################################################
+main() {
+  if [[ $# -lt 2 ]]; then
+    printf "%s\n" "Usage: $0 <file> <workspace>"
+    exit 1
+  fi
+
+  load::variables "$@"
+  parse::meta_data
+
+  save::formatting
+
+  # Only do versioning after ALL formatting is complete
+  if [[ ${automated_versioning:-} == "true" ]]; then
+    save::versioning
+  fi
+
+  printf "%s\n" "onSave processing completed for ${filename}"
+}
+
+# Execute main function with all arguments
+main "$@"

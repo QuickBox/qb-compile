@@ -1,0 +1,204 @@
+{
+  "files.autoSave": "off",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.trimFinalNewlines": true,
+  "editor.insertSpaces": true,
+  "editor.tabSize": 2,
+  "editor.detectIndentation": false,
+  "editor.formatOnSave": false,
+  "editor.formatOnSaveMode": "file",
+  "[shellscript]": {
+    "editor.defaultFormatter": "mads-hartmann.bash-ide-vscode",
+    "editor.formatOnSave": false
+  },
+  "bashIde.formatOnSave": false,
+  "bashIde.formatOnSaveMode": "file",
+  "emeraldwalk.runonsave": {
+    "commands": [
+      {
+        "match": "\\.sh$",
+        "cmd": "${workspaceFolder}/developer_resources/vscode-formatter.sh ${file}",
+        "runIn": "background"
+      }
+    ]
+  },
+  "files.associations": {
+    "*.sh": "shellscript"
+  },
+  "shellcheck.executablePath": "/usr/bin/shellcheck",
+  "shellcheck.run": "onType",
+  "shell-format.enable": false,
+  "shell-format.formatOnSave": false,
+  "shell-format.path": "",
+  "shell-format.args": [],
+  "shell-format.ignore": ["**/*.sh"],
+  "shell-format.useGlobalConfig": false,
+  "shell-format.useWorkspaceConfig": true,
+  "shell-format.command": "",
+  "shell-format.workingDirectory": "",
+  "shell-format.env": {},
+  "shell-format.shellPath": "",
+  "shell-format.shellArgs": [],
+  "shell-format.autoFormat": false,
+  "shell-format.autoFormatOnSave": false,
+  "shell-format.autoFormatOnPaste": false,
+  "shell-format.autoFormatOnType": false,
+  "todo-tree.general.tags": [
+    "@bug",
+    "@hack",
+    "@fixme",
+    "@todo",
+    "@xxx",
+    "[ ]",
+    "[x]",
+    "@script-note",
+    "FIXME",
+    "TODO"
+  ],
+  "todo-tree.general.statusBar": "total",
+  "todo-tree.general.showIconsInsteadOfTagsInStatusBar": true,
+  "trunk.trunkGrayOutNonBlockingIssues": false,
+  "editor.fontSize": 11,
+  "editor.wordWrapColumn": 160,
+  "editor.multiCursorModifier": "ctrlCmd",
+  "editor.fontFamily": "'Hack', 'Droid Sans Mono', 'monospace', monospace",
+  "better-comments.tags": [
+    {
+      "tag": "!",
+      "color": "#FF2D00",
+      "strikethrough": false,
+      "underline": false,
+      "backgroundColor": "transparent",
+      "bold": false,
+      "italic": false
+    },
+    {
+      "tag": "?",
+      "color": "#3498DB",
+      "strikethrough": false,
+      "underline": false,
+      "backgroundColor": "transparent",
+      "bold": false,
+      "italic": false
+    },
+    {
+      "tag": "//",
+      "color": "#474747",
+      "strikethrough": true,
+      "underline": false,
+      "backgroundColor": "transparent",
+      "bold": false,
+      "italic": false
+    },
+    {
+      "tag": "todo",
+      "color": "#fff576",
+      "strikethrough": false,
+      "underline": false,
+      "backgroundColor": "transparent",
+      "bold": false,
+      "italic": false
+    },
+    {
+      "tag": "note",
+      "color": "#fcf2c1",
+      "strikethrough": false,
+      "underline": false,
+      "backgroundColor": "transparent",
+      "bold": false,
+      "italic": false
+    },
+    {
+      "tag": "fixme",
+      "color": "#e83b1e",
+      "strikethrough": false,
+      "underline": false,
+      "backgroundColor": "transparent",
+      "bold": false,
+      "italic": false
+    },
+    {
+      "tag": "*",
+      "color": "#98C379",
+      "strikethrough": false,
+      "underline": false,
+      "backgroundColor": "transparent",
+      "bold": false,
+      "italic": false
+    }
+  ],
+  "nginx-conf-hint.format.align": true,
+  "nginx-conf-hint.syntax": "original",
+  "beautify.options": {},
+  "todo-tree.highlights.customHighlight": {
+    "@fixme": {
+      "icon": "command-palette",
+      "type": "text",
+      "foreground": "#1ee81e",
+      "background": "#fff67600",
+      "iconColour": "#1ee81e",
+      "line": {
+        "type": "background",
+        "colour": "#1ee81e"
+      }
+    },
+    "@todo": {
+      "icon": "codescan",
+      "type": "text",
+      "foreground": "#fff576",
+      "background": "#fff67600",
+      "iconColour": "#fff576",
+      "line": {
+        "type": "background",
+        "colour": "#fff576"
+      }
+    },
+    "@hack": {
+      "icon": "alert",
+      "type": "text",
+      "foreground": "#ffad76",
+      "background": "#fff67600",
+      "iconColour": "#ffad76"
+    },
+    "@bug": {
+      "icon": "bug",
+      "type": "text",
+      "foreground": "#ff7b76",
+      "background": "#fff67600",
+      "iconColour": "#ff7b76"
+    },
+    "@xxx": {
+      "icon": "alert",
+      "type": "text",
+      "foreground": "#ffad76",
+      "background": "#fff67600",
+      "iconColour": "#ffad76"
+    },
+    "[ ]": {
+      "icon": "circle",
+      "type": "text",
+      "foreground": "#76dfff",
+      "background": "#fff67600",
+      "iconColour": "#76dfff"
+    },
+    "[x]": {
+      "icon": "check-circle",
+      "type": "text",
+      "foreground": "#76dfff",
+      "background": "#fff67600",
+      "iconColour": "#76dfff"
+    },
+    "@script-note": {
+      "icon": "code-review",
+      "type": "text",
+      "foreground": "#fcf2c1",
+      "background": "#fff67600",
+      "iconColour": "#fcf2c1",
+      "line": {
+        "type": "background",
+        "colour": "#fcf2c1"
+      }
+    }
+  }
+}

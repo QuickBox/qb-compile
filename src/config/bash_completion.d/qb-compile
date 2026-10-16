@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+################################################################################
+# Autocomplete script for qb-compile
+# shellcheck disable=SC2034
+################################################################################
+
+_qbcompile_autocomplete() {
+	local cur prev words cword
+	_init_completion || return
+
+	# Define compilation options
+	local compilation_options=(
+		"--boost"
+    "--branch"
+		"--cmake"
+		"--deluge"
+		"--gcc"
+		"--intel-media-driver"
+		"--libtorrent"
+		"--libtorrent-rasterbar"
+		"--rasterbar-version"
+		"--libtorrent-version"
+    "--patch"
+		"--python"
+		"--python3-libtorrent"
+		"--python-version"
+		"--qbittorrent"
+		"--qt6"
+		"--rtorrent"
+		"--rtorrent-version"
+		"--transmission"
+		"--xmlrpc-c"
+	)
+
+	# Define general options
+	local general_options=(
+		"--temp_dir"
+		"--list-packages"
+		"--help"
+		"--update"
+		"--version"
+		"-tmp"
+		"-lp"
+		"-h"
+		"-u"
+		"-v"
+	)
+
+	# Combine all options
+	local all_options=("${compilation_options[@]}" "${general_options[@]}")
+
+	# Check if `--python` is in the used options
+	local python_flag_present=false
+	for word in "${words[@]}"; do
+		if [[ "${word}" == "--python" ]]; then
+			python_flag_present=true
+			break
+		fi
+	done
+
+	# Suggest `--python-version` if `--python` is present
+	if [[ "${python_flag_present}" == true ]]; then
+		# Restrict to only `--python-version`
+		if [[ "${prev}" == "--python" ]]; then
+			COMPREPLY=(--python-version)
+		else
+			COMPREPLY=()
+		fi
+		return
+	fi
+
+	# Provide completion for qb-compile without needing `--` first
+	if [[ "${COMP_CWORD}" -eq 1 ]]; then
+		mapfile -t COMPREPLY < <(compgen -W "${all_options[*]}" -- "${cur}") || true
+	elif [[ "${cur}" == --* || "${cur}" == -* ]]; then
+		mapfile -t COMPREPLY < <(compgen -W "${all_options[*]}" -- "${cur}") || true
+	fi
+}
+
+# Register the autocomplete function for qb-compile
+complete -F _qbcompile_autocomplete qb-compile

@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "emeraldwalk.runonsave",
+    "mads-hartmann.bash-ide-vscode"
+  ],
+  "unwantedRecommendations": [
+    "foxundermoon.shell-format"
+  ]
+}

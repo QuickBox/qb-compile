@@ -1,0 +1,55 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Format Current Bash File",
+      "type": "shell",
+      "command": "${workspaceFolder}/developer_resources/format-bash.sh",
+      "args": ["${file}"],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "silent",
+        "focus": false,
+        "panel": "shared"
+      },
+      "runOptions": {
+        "runOn": "default"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Quick Format Modified Bash Files",
+      "type": "shell",
+      "command": "${workspaceFolder}/developer_resources/quick-format.sh",
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "runOptions": {
+        "runOn": "default"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Format All Bash Files",
+      "type": "shell",
+      "command": "${workspaceFolder}/developer_resources/format-bash.sh",
+      "args": ["--all"],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+      },
+      "runOptions": {
+        "runOn": "default"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
