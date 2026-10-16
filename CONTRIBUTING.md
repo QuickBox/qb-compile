@@ -4,6 +4,8 @@ Issues and pull requests are welcome. qb-compile builds the packages published i
 
 ## Reporting bugs and asking for features
 
+Not sure whether it is a bug, or want to talk an idea through first? Ask on the [QuickBox Discord](https://discord.gg/mca7RSv5pa).
+
 Open an issue and include:
 
 - the distro and codename (`cat /etc/os-release`)
@@ -13,7 +15,7 @@ Open an issue and include:
 
 ## Security reports
 
-Do not open a public issue for a security problem. Email echo@quickbox.io with `[Security]` at the start of the subject line, and describe the problem and how to reproduce it. We will reply and coordinate a fix with you.
+Do not open a public issue or post in Discord about a security problem. Email echo@quickbox.io with `[Security]` at the start of the subject line, and describe the problem and how to reproduce it. We will reply and coordinate a fix with you.
 
 ## Making a change
 

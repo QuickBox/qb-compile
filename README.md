@@ -213,6 +213,10 @@ developer_resources/               Maintainer tooling (see its README)
 - Broken dependencies: qb-compile runs `apt-get --fix-broken install` when it detects them; fix your apt sources and run it again.
 - A build that cannot link libtorrent-rasterbar is usually a 2.1.x tag; pin 2.0.x as described above.
 
+## Community and support
+
+Questions, help and general discussion happen on the [QuickBox Discord](https://discord.gg/mca7RSv5pa). Use GitHub issues for bugs and feature requests so they can be tracked.
+
 ## Contributing
 
 Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
