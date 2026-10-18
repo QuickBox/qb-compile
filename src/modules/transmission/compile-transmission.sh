@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ################################################################################
 # @file_name: compile-transmission
-# @version: 1.0.12
+# @version: 1.0.13
 # @project_name: qb-compile
 # @description: Compilation script for Transmission for qb-compile
 #
@@ -99,8 +99,13 @@ qbcompile::compile::transmission() {
     [[ -s "${NVM_DIR}/bash_completion" ]] && \. "${NVM_DIR}/bash_completion"
     # Check if nvm is installed, if not install it
     if ! command -v nvm &>/dev/null; then
-      curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash 2>&1 | sudo tee -a "${mflibs_log_location}" >/dev/null
+      local nvm_version="v0.40.8"
+      local nvm_installer
+      nvm_installer="$(mktemp)"
+      curl -fsSL -o "${nvm_installer}" "https://raw.githubusercontent.com/nvm-sh/nvm/${nvm_version}/install.sh" || { rm -f "${nvm_installer}" && mflibs::shell::text::red "Failed to download the nvm installer." && exit 1; }
+      bash "${nvm_installer}" 2>&1 | sudo tee -a "${mflibs_log_location}" >/dev/null
       nvm_rc=("${PIPESTATUS[@]}")
+      rm -f "${nvm_installer}"
       [[ ${nvm_rc[0]} -eq 0 && ${nvm_rc[1]} -eq 0 ]] || { mflibs::shell::text::red "Failed to install nvm." && exit 1; }
       source "${HOME}/.profile" >/dev/null 2>&1
       # The installer wrote nvm.sh after the initial source above; load it now so nvm is callable
