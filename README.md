@@ -157,18 +157,9 @@ Follow a running build with `screen -r <module>_compile` (for example `screen -r
 
 [`QuickBox/compiled-packages`](https://github.com/QuickBox/compiled-packages) holds the packages QuickBox publishes and installs, plus `packages.lst`, an index of them. Those packages are produced with the scripts in this repository, run on a clean machine of each target distro. The index is generated from the built `.deb` files rather than edited by hand.
 
-### Publishing a build (maintainers)
+Each `packages.lst` row is `CODENAME CATEGORY PACKAGE VERSION FILENAME MD5`. `CATEGORY` is the `binary-amd64/<category>` directory, `PACKAGE` and `VERSION` come from the `.deb` control file (the Debian build revision is stripped from `VERSION`), and `MD5` is the file checksum. Only `binary-amd64` debs are indexed; static binaries are not.
 
-`developer_resources/sync-packages.sh` copies a codename's built tree from the build server into a local `compiled-packages` checkout and regenerates only that codename's rows in `packages.lst`. The header, the column alignment and every other codename's rows are left alone.
-
-```bash
-developer_resources/sync-packages.sh --codename <codename> --host <build-server> --dest /path/to/compiled-packages
-git -C /path/to/compiled-packages diff
-```
-
-Each `packages.lst` row is `CODENAME CATEGORY PACKAGE VERSION FILENAME MD5`. `CATEGORY` is the `binary-amd64/<category>` directory, `PACKAGE` and `VERSION` come from the `.deb` control file (the Debian build revision is stripped from `VERSION`), and `MD5` is the file checksum. Only `binary-amd64` debs are indexed; static binaries are not. Re-running for the same codename changes nothing.
-
-Useful options: `--dry-run` previews the diff against an already-pulled tree (no `--host` needed), `--port` sets a non-default SSH port, `--dest` selects the checkout (default `./compiled-packages`), and `--canonicalize` re-sorts the existing manifest without a pull.
+Maintainers build merged changes on a clean machine of each distro and publish the results to compiled-packages.
 
 ## Network access
 

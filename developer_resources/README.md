@@ -2,10 +2,6 @@
 
 Maintainer tooling for qb-compile. None of it is needed to build packages.
 
-## sync-packages.sh
-
-Copies a codename's built `.deb` tree from a build server into a local `compiled-packages` checkout and regenerates that codename's rows in `packages.lst`. See "Publishing a build" in the top-level README for the workflow, and run `developer_resources/sync-packages.sh --help` for every option.
-
 ## Formatting and version tooling
 
 Scripts in this repository carry a metadata header, and part of it drives automation on save: `@save_tasks` with `automated_versioning: true` makes the tools below bump the file's `@version`.

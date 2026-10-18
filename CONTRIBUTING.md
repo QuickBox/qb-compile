@@ -25,6 +25,8 @@ Do not open a public issue or post in Discord about a security problem. Email ec
 4. Run `bash -n` and `shellcheck` on every script you touched.
 5. Open the pull request and describe what changed and why.
 
+Pull requests change the build scripts only. The packages and `packages.lst` in compiled-packages are built and published by QuickBox maintainers from merged changes, so do not open pull requests with built packages.
+
 ## Code conventions
 
 - Bash with `set -Eeuo pipefail` discipline, quoted variables (`"${var}"`), and `local` for function variables.
