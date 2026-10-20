@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ################################################################################
 # @file_name: compile-libtorrent
-# @version: 1.0.8
+# @version: 1.0.9
 # @project_name: qb-compile
 # @description: Compilation script for libtorrent (rakshasa) for qb-compile
 #
@@ -22,6 +22,98 @@
 ################################################################################
 # shellcheck disable=SC1090,SC2154
 ################################################################################
+
+################################################################################
+# @description: Whether the built-in EPOLL_FD_RACE_FIX applies to a libtorrent version.
+#   True for the 0.16 line from 0.16.7 on (the epoll backend with the
+#   PollInternal::modify() switch); 0.16.5/0.16.6 and every older line keep the
+#   opt-in --patch behavior.
+# @arg $1 libtorrent version (e.g. 0.16.23)
+# @return 0 when the fix is applied automatically, 1 otherwise
+# @example: qbcompile::libtorrent::epoll_fix_applies "0.16.23"
+# @break
+################################################################################
+qbcompile::libtorrent::epoll_fix_applies() {
+  [[ $1 == 0.16.* && $1 != 0.16.[0-6] ]]
+}
+
+################################################################################
+# @description: Patch libtorrent's epoll backend so a descriptor that libcurl has
+#   already closed no longer aborts rTorrent. curl closes its own sockets, so the
+#   kernel has dropped them from epoll before libtorrent issues epoll_ctl on them
+#   and the call fails with EBADF. EPOLL_CTL_DEL then tolerates EBADF/ENOENT and
+#   EPOLL_CTL_MOD tolerates EBADF; EPOLL_CTL_ADD stays fatal. Must run from the
+#   unpacked libtorrent source root. Each edit is anchored on the exact throw
+#   statement and the log line above it, so a changed upstream source fails
+#   instead of being edited in the wrong place.
+# @noargs
+# @return 0 when exactly two EPOLL_FD_RACE_FIX edits are present, 1 otherwise
+# @example: qbcompile::libtorrent::epoll_fd_race_fix
+# @break
+################################################################################
+qbcompile::libtorrent::epoll_fd_race_fix() {
+  local poll_file="" candidate marker_count
+  local mod_throw='epoll_ctl(MOD) error for event: " + event->print_name_fd_str() + " : " + std::string('
+  local del_throw='epoll_ctl(DEL) error for event: " + event->print_name_fd_str() + " : " + std::string('
+  for candidate in src/torrent/system/poll_epoll.cc src/torrent/net/poll_epoll.cc; do
+    if [[ -f ${candidate} ]]; then
+      poll_file="${candidate}"
+      break
+    fi
+  done
+  if [[ -z ${poll_file} ]]; then
+    mflibs::shell::text::red "poll_epoll.cc not found; cannot apply EPOLL_FD_RACE_FIX."
+    return 1
+  fi
+  marker_count=$(grep -c "EPOLL_FD_RACE_FIX" "${poll_file}" || true)
+  if [[ ${marker_count} -eq 2 ]]; then
+    mflibs::shell::text::green "EPOLL_FD_RACE_FIX already applied to ${poll_file}."
+    return 0
+  fi
+  if [[ ${marker_count} -ne 0 ]] ||
+    [[ $(grep -cF -- "${mod_throw}" "${poll_file}" || true) -ne 1 ]] ||
+    [[ $(grep -cF -- "${del_throw}" "${poll_file}" || true) -ne 1 ]]; then
+    mflibs::shell::text::red "${poll_file} does not match the expected epoll_ctl(MOD)/epoll_ctl(DEL) error handling; cannot apply EPOLL_FD_RACE_FIX."
+    return 1
+  fi
+  mflibs::shell::text::yellow "Applying EPOLL_FD_RACE_FIX to ${poll_file}..."
+  if ! awk -v mod="${mod_throw}" -v del="${del_throw}" '
+    function flush() { if (have) print prev; have = 0 }
+    {
+      kind = index($0, mod) ? "MOD" : (index($0, del) ? "DEL" : "")
+      if (kind != "") {
+        if (!have || index(prev, "LT_LOG_EVENT(\"modify event EPOLL_CTL_" kind " failed: %s\"") == 0) {
+          bad = 1
+        } else {
+          match(prev, /^[[:space:]]*/)
+          ind = substr(prev, 1, RLENGTH)
+          cond = (kind == "MOD") ? "errno == EBADF" : "errno == EBADF || errno == ENOENT"
+          print ind "if (" cond ") { // EPOLL_FD_RACE_FIX"
+          print ind "  LT_LOG_EVENT(\"modify event EPOLL_CTL_" kind " ignored for a closed descriptor: %s\", std::strerror(errno));"
+          print ind "  return;"
+          print ind "}"
+          edits++
+        }
+      }
+      flush()
+      prev = $0
+      have = 1
+    }
+    END { flush(); if (bad || edits != 2) exit 3 }
+  ' "${poll_file}" >"${poll_file}.qbfix"; then
+    rm -f "${poll_file}.qbfix"
+    mflibs::shell::text::red "Unexpected layout around the epoll_ctl error handling in ${poll_file}; cannot apply EPOLL_FD_RACE_FIX."
+    return 1
+  fi
+  cat "${poll_file}.qbfix" >"${poll_file}"
+  rm -f "${poll_file}.qbfix"
+  marker_count=$(grep -c "EPOLL_FD_RACE_FIX" "${poll_file}" || true)
+  if [[ ${marker_count} -ne 2 ]]; then
+    mflibs::shell::text::red "EPOLL_FD_RACE_FIX left ${marker_count} markers in ${poll_file}; expected 2."
+    return 1
+  fi
+  mflibs::shell::text::green "  ✓ Applied EPOLL_CTL_DEL and EPOLL_CTL_MOD closed-descriptor handling."
+}
 
 ################################################################################
 # @description: Function to compile libtorrent (for rTorrent or standalone) and create a .deb package
@@ -48,8 +140,12 @@ qbcompile::compile::libtorrent() {
   mkdir -p "${libtorrent_deb_storage}"
   # version + existing
   qbcompile::get::libtorrent_version
+  # The 0.16 line from 0.16.7 on is built with EPOLL_FD_RACE_FIX and ships as
+  # -2build1; every other version stays -1build1.
+  local libtorrent_build_rev="1build1"
+  qbcompile::libtorrent::epoll_fix_applies "${libtorrent_version}" && libtorrent_build_rev="2build1"
   declare -xg libtorrent_deb_file
-  libtorrent_deb_file="${libtorrent_deb_storage}/libtorrent${libtorrent_compact_version}_${libtorrent_version}-1build1_amd64.deb"
+  libtorrent_deb_file="${libtorrent_deb_storage}/libtorrent${libtorrent_compact_version}_${libtorrent_version}-${libtorrent_build_rev}_amd64.deb"
   if ! qbcompile::check_existing_deb_or_binary "${libtorrent_deb_file}"; then
     screen -S libtorrent_compile -X quit >/dev/null
     return 0
@@ -83,7 +179,10 @@ qbcompile::compile::libtorrent() {
   rm -f config.cache config.log config.status Makefile
   rm -rf autom4te.cache .deps
   find . -name Makefile -delete 2>/dev/null || true
-  if [[ ${apply_patch} == "true" ]]; then
+  if qbcompile::libtorrent::epoll_fix_applies "${libtorrent_version}"; then
+    # Always patched: fail before configure when the source does not match.
+    qbcompile::libtorrent::epoll_fd_race_fix || exit 1
+  elif [[ ${apply_patch} == "true" ]]; then
     # PATCH: Fix curl socket race condition causing epoll_ctl crashes
     poll_epoll_file="src/torrent/net/poll_epoll.cc"
     if [[ -f "${poll_epoll_file}" ]]; then
@@ -224,7 +323,7 @@ EOF
   # control
   cat >"${package_dir}/DEBIAN/control" <<EOF
 Package: libtorrent${libtorrent_compact_version}
-Version: ${libtorrent_version}-1build1
+Version: ${libtorrent_version}-${libtorrent_build_rev}
 Section: libs
 Priority: optional
 Architecture: amd64
@@ -238,7 +337,7 @@ EOF
   mflibs::shell::text::blue "Packaging libtorrent version ${libtorrent_version}..."
   qbcompile::dpkg-deb::status &
   status_pid=$!
-  dpkg-deb --build "${package_dir}" "${libtorrent_deb_storage}/libtorrent${libtorrent_compact_version}_${libtorrent_version}-1build1_amd64.deb" 2>&1 | sudo tee -a "${mflibs_log_location}" >/dev/null
+  dpkg-deb --build "${package_dir}" "${libtorrent_deb_file}" 2>&1 | sudo tee -a "${mflibs_log_location}" >/dev/null
   rc=${PIPESTATUS[0]}
   wait "${status_pid}"
   kill "${status_pid}" >/dev/null 2>&1 || true
@@ -247,8 +346,7 @@ EOF
     exit 1
   }
   # verify
-  libtorrent_deb_file=$(find "${libtorrent_deb_storage}/" -maxdepth 1 -type f -name "libtorrent${libtorrent_compact_version}*.deb" | head -n 1)
-  [[ -z ${libtorrent_deb_file} ]] && {
+  [[ -f ${libtorrent_deb_file} ]] || {
     mflibs::shell::text::red "No .deb file found for libtorrent."
     exit 1
   }
