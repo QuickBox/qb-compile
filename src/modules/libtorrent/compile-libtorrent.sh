@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ################################################################################
 # @file_name: compile-libtorrent
-# @version: 1.0.9
+# @version: 1.0.10
 # @project_name: qb-compile
 # @description: Compilation script for libtorrent (rakshasa) for qb-compile
 #
@@ -116,6 +116,94 @@ qbcompile::libtorrent::epoll_fd_race_fix() {
 }
 
 ################################################################################
+# @description: Whether the built-in CURL_POLL_REMOVE_FIX applies to a libtorrent version.
+#   True for the 0.16 line from 0.16.16 on, the releases whose CurlSocket has a
+#   separate handle_poll_remove(); earlier 0.16 releases already clear the easy
+#   handle inside receive_socket() when libcurl removes a socket.
+# @arg $1 libtorrent version (e.g. 0.16.23)
+# @return 0 when the fix is applied automatically, 1 otherwise
+# @example: qbcompile::libtorrent::curl_poll_remove_fix_applies "0.16.23"
+# @break
+################################################################################
+qbcompile::libtorrent::curl_poll_remove_fix_applies() {
+  local patch_level
+  [[ $1 == 0.16.* ]] || return 1
+  patch_level="${1#0.16.}"
+  [[ ${patch_level} =~ ^[0-9]+$ ]] && ((10#${patch_level} >= 16))
+}
+
+################################################################################
+# @description: Patch libtorrent's libcurl socket handling so a socket that libcurl
+#   removed from polling can be handed to the next transfer. After
+#   CURL_POLL_REMOVE for a socket libcurl keeps open, the stale easy handle stays
+#   on the CurlSocket; libcurl then reports the socket again with no owner and
+#   handle_poll_new() aborts on "existing CurlSocket easy_handle not null". The
+#   edit clears the easy handle and the libcurl socket pointer right after the
+#   read/write polling is removed. Must run from the unpacked libtorrent source
+#   root. The edit is anchored on the exact log line and the two remove calls
+#   after it, so a changed upstream source fails instead of being edited in the
+#   wrong place.
+# @noargs
+# @return 0 when exactly one CURL_POLL_REMOVE_FIX edit is present, 1 otherwise
+# @example: qbcompile::libtorrent::curl_poll_remove_fix
+# @break
+################################################################################
+qbcompile::libtorrent::curl_poll_remove_fix() {
+  local curl_file="src/net/curl_socket.cc" marker_count
+  local anchor='LT_LOG_DEBUG_SOCKET_FD_HANDLE("handle_poll_remove(CURL_POLL_REMOVE) : removing from read/write polling", 0);'
+  if [[ ! -f ${curl_file} ]]; then
+    mflibs::shell::text::red "${curl_file} not found; cannot apply CURL_POLL_REMOVE_FIX."
+    return 1
+  fi
+  marker_count=$(grep -c "CURL_POLL_REMOVE_FIX" "${curl_file}" || true)
+  if [[ ${marker_count} -eq 1 ]]; then
+    mflibs::shell::text::green "CURL_POLL_REMOVE_FIX already applied to ${curl_file}."
+    return 0
+  fi
+  if [[ ${marker_count} -ne 0 ]] || [[ $(grep -cF -- "${anchor}" "${curl_file}" || true) -ne 1 ]]; then
+    mflibs::shell::text::red "${curl_file} does not match the expected handle_poll_remove() polling removal; cannot apply CURL_POLL_REMOVE_FIX."
+    return 1
+  fi
+  mflibs::shell::text::yellow "Applying CURL_POLL_REMOVE_FIX to ${curl_file}..."
+  if ! awk -v anchor="${anchor}" '
+    {
+      print
+      if (state == 0) { if (index($0, anchor)) state = 1; next }
+      if (state >= 3 || $0 ~ /^[[:space:]]*$/) next
+      if (state == 1) {
+        if ($0 ~ /^[[:space:]]*this_thread::poll\(\)->remove_read\(socket\);[[:space:]]*$/) state = 2
+        else { bad = 1; state = 9 }
+        next
+      }
+      if ($0 ~ /^[[:space:]]*this_thread::poll\(\)->remove_write\(socket\);[[:space:]]*$/) {
+        match($0, /^[[:space:]]*/)
+        ind = substr($0, 1, RLENGTH)
+        print ""
+        print ind "// CURL_POLL_REMOVE_FIX: release the easy handle and the libcurl socket pointer"
+        print ind "// so the next transfer on this socket does not find a stale owner."
+        print ind "socket->m_easy_handle = nullptr;"
+        print ind "curl_multi_assign(stack->handle(), fd, nullptr);"
+        edits++
+        state = 3
+      } else { bad = 1; state = 9 }
+    }
+    END { if (bad || edits != 1) exit 3 }
+  ' "${curl_file}" >"${curl_file}.qbfix"; then
+    rm -f "${curl_file}.qbfix"
+    mflibs::shell::text::red "Unexpected layout around the handle_poll_remove() polling removal in ${curl_file}; cannot apply CURL_POLL_REMOVE_FIX."
+    return 1
+  fi
+  cat "${curl_file}.qbfix" >"${curl_file}"
+  rm -f "${curl_file}.qbfix"
+  marker_count=$(grep -c "CURL_POLL_REMOVE_FIX" "${curl_file}" || true)
+  if [[ ${marker_count} -ne 1 ]]; then
+    mflibs::shell::text::red "CURL_POLL_REMOVE_FIX left ${marker_count} markers in ${curl_file}; expected 1."
+    return 1
+  fi
+  mflibs::shell::text::green "  ✓ Applied CURL_POLL_REMOVE easy handle reset."
+}
+
+################################################################################
 # @description: Function to compile libtorrent (for rTorrent or standalone) and create a .deb package
 # @noargs
 # @example: qbcompile::compile::libtorrent
@@ -204,6 +292,9 @@ qbcompile::compile::libtorrent() {
     else
       mflibs::shell::text::yellow "${poll_epoll_file} not found; skipping EPOLL_FD_RACE_FIX."
     fi
+  fi
+  if qbcompile::libtorrent::curl_poll_remove_fix_applies "${libtorrent_version}"; then
+    qbcompile::libtorrent::curl_poll_remove_fix || exit 1
   fi
   # toolchain: FORCE system compilers and a clean env to avoid GCC-13 bleed
   export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
