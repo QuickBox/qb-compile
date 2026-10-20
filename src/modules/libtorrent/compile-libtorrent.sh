@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ################################################################################
 # @file_name: compile-libtorrent
-# @version: 1.0.10
+# @version: 1.0.11
 # @project_name: qb-compile
 # @description: Compilation script for libtorrent (rakshasa) for qb-compile
 #
@@ -113,6 +113,24 @@ qbcompile::libtorrent::epoll_fd_race_fix() {
     return 1
   fi
   mflibs::shell::text::green "  ✓ Applied EPOLL_CTL_DEL and EPOLL_CTL_MOD closed-descriptor handling."
+}
+
+################################################################################
+# @description: Debian build revision of the libtorrent package for a version.
+#   The one place this is decided: the libtorrent build and the rTorrent build
+#   that links against the packaged libtorrent both call it, so they always
+#   agree on the .deb file name.
+# @arg $1 libtorrent version (e.g. 0.16.23)
+# @output: build revision (2build1 when the epoll fix is built in, else 1build1)
+# @example: qbcompile::libtorrent::build_rev "0.16.23"
+# @break
+################################################################################
+qbcompile::libtorrent::build_rev() {
+  if qbcompile::libtorrent::epoll_fix_applies "$1"; then
+    echo "2build1"
+  else
+    echo "1build1"
+  fi
 }
 
 ################################################################################
@@ -230,8 +248,8 @@ qbcompile::compile::libtorrent() {
   qbcompile::get::libtorrent_version
   # The 0.16 line from 0.16.7 on is built with EPOLL_FD_RACE_FIX and ships as
   # -2build1; every other version stays -1build1.
-  local libtorrent_build_rev="1build1"
-  qbcompile::libtorrent::epoll_fix_applies "${libtorrent_version}" && libtorrent_build_rev="2build1"
+  local libtorrent_build_rev
+  libtorrent_build_rev="$(qbcompile::libtorrent::build_rev "${libtorrent_version}")"
   declare -xg libtorrent_deb_file
   libtorrent_deb_file="${libtorrent_deb_storage}/libtorrent${libtorrent_compact_version}_${libtorrent_version}-${libtorrent_build_rev}_amd64.deb"
   if ! qbcompile::check_existing_deb_or_binary "${libtorrent_deb_file}"; then
