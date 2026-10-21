@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ################################################################################
 # @file_name: compile-libcurl
-# @version: 1.0.0
+# @version: 1.0.1
 # @project_name: qb-compile
 # @description: Private static libcurl for the libtorrent (rakshasa) 0.16 builds
 #
@@ -44,7 +44,8 @@ qbcompile::libcurl::bundled() {
 #   package. The libtorrent and rTorrent builds both call it, so a pair always
 #   agrees on its file names. rTorrent 0.16.11 carries the backported SCGI
 #   trust-flag reset (2build1). A pair with the private libcurl built in moves
-#   both packages to one revision above the highest one the pair shipped before.
+#   both packages above the highest revision the pair shipped without it, by the
+#   libcurl package generation, so each new libcurl pin gets a new revision.
 # @arg $1 package (libtorrent or rtorrent)
 # @arg $2 version (e.g. 0.16.23)
 # @output: build revision (e.g. 1build1)
@@ -55,7 +56,8 @@ qbcompile::rakshasa::build_rev() {
   local package="$1" version="$2" rtorrent_rev=1
   [[ ${version} == "0.16.11" ]] && rtorrent_rev=2
   if qbcompile::libcurl::bundled "${version}"; then
-    echo "$((rtorrent_rev + 1))build1"
+    qbcompile::get::libcurl_version >/dev/null
+    echo "$((rtorrent_rev + libcurl_generation))build1"
   elif [[ ${package} == "rtorrent" ]]; then
     echo "${rtorrent_rev}build1"
   else
