@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ################################################################################
 # @file_name: compile-rtorrent
-# @version: 1.0.10
+# @version: 1.0.9
 # @project_name: qb-compile
 # @description: Compilation script for rTorrent for qb-compile
 #
@@ -128,7 +128,7 @@ qbcompile::compile::rtorrent() {
   if [[ ! -d "${staged_lt_incdir}/torrent" ]]; then
     lt_pkg="libtorrent${libtorrent_compact_version}"
     if ! dpkg-query -W -f='${db:Status-Abbrev}' "${lt_pkg}" 2>/dev/null | grep -q '^ii'; then
-      lt_deb="${deb_storage}/${codename}/binary-amd64/libtorrent-rakshasa/${lt_pkg}_${libtorrent_version}-$(qbcompile::libtorrent::build_rev "${libtorrent_version}")_amd64.deb"
+      lt_deb="${deb_storage}/${codename}/binary-amd64/libtorrent-rakshasa/${lt_pkg}_${libtorrent_version}-1build1_amd64.deb"
       if [[ -f "${lt_deb}" ]]; then
         mflibs::shell::text::blue "Installing packaged ${lt_pkg} for the rTorrent link..."
         qbcompile::verify::deb "${lt_deb}"
