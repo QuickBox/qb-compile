@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ################################################################################
 # @file_name: compile-rtorrent
-# @version: 1.0.9
+# @version: 1.0.10
 # @project_name: qb-compile
 # @description: Compilation script for rTorrent for qb-compile
 #
@@ -47,10 +47,10 @@ qbcompile::compile::rtorrent() {
   mkdir -p "${rtorrent_deb_storage}"
   qbcompile::get::libtorrent_version 2>&1
   qbcompile::get::rtorrent_version
-  # Build revision. 0.16.11 carries the backported SCGI trust-flag reset, so it
-  # ships as -2build1; every other version stays -1build1.
-  local rtorrent_build_rev="1build1"
-  [[ ${rtorrent_version} == "0.16.11" ]] && rtorrent_build_rev="2build1"
+  # Build revisions of this rTorrent and its libtorrent pair.
+  local rtorrent_build_rev libtorrent_build_rev
+  rtorrent_build_rev="$(qbcompile::rakshasa::build_rev "rtorrent" "${rtorrent_version}")"
+  libtorrent_build_rev="$(qbcompile::rakshasa::build_rev "libtorrent" "${libtorrent_version}")"
   declare -xg rtorrent_deb_file
   rtorrent_deb_file="${rtorrent_deb_storage}/rtorrent_${rtorrent_version}-${rtorrent_build_rev}_amd64.deb"
   if ! qbcompile::check_existing_deb_or_binary "${rtorrent_deb_file}"; then
@@ -124,11 +124,12 @@ qbcompile::compile::rtorrent() {
   # system-wide, so rTorrent would compile against absent headers. Guarantee the
   # dep is present by installing the packaged libtorrent .deb. The rakshasa libs
   # use per-version package NAMES (libtorrent155/156/157) whose files overlap, so
-  # purge any conflicting version before installing.
+  # purge any conflicting version before installing. An installed libtorrent of
+  # another build revision is replaced the same way.
   if [[ ! -d "${staged_lt_incdir}/torrent" ]]; then
     lt_pkg="libtorrent${libtorrent_compact_version}"
-    if ! dpkg-query -W -f='${db:Status-Abbrev}' "${lt_pkg}" 2>/dev/null | grep -q '^ii'; then
-      lt_deb="${deb_storage}/${codename}/binary-amd64/libtorrent-rakshasa/${lt_pkg}_${libtorrent_version}-1build1_amd64.deb"
+    if ! dpkg-query -W -f='${db:Status-Abbrev} ${Version}' "${lt_pkg}" 2>/dev/null | grep -qxF "ii  ${libtorrent_version}-${libtorrent_build_rev}"; then
+      lt_deb="${deb_storage}/${codename}/binary-amd64/libtorrent-rakshasa/${lt_pkg}_${libtorrent_version}-${libtorrent_build_rev}_amd64.deb"
       if [[ -f "${lt_deb}" ]]; then
         mflibs::shell::text::blue "Installing packaged ${lt_pkg} for the rTorrent link..."
         qbcompile::verify::deb "${lt_deb}"
@@ -232,8 +233,11 @@ qbcompile::compile::rtorrent() {
     done
   }
   # link helper libs (curl/z/crypto/pthread + ncursesw/tinfo) to avoid late undefined refs
+  # (a libtorrent with the private libcurl built in needs no system libcurl)
   NC_LIBS="$(pkg-config --libs ncursesw 2>/dev/null || echo '-lncursesw -ltinfo')"
-  ALL_LIBS="${NC_LIBS} ${LT_LIBS} -lcurl -lz -lcrypto -lpthread"
+  local curl_lib="-lcurl"
+  qbcompile::libcurl::bundled "${libtorrent_version}" && curl_lib=""
+  ALL_LIBS="${NC_LIBS} ${LT_LIBS} ${curl_lib} -lz -lcrypto -lpthread"
   # build
   qbcompile::build::status &
   status_pid=$!
@@ -273,6 +277,13 @@ qbcompile::compile::rtorrent() {
   if [[ -z "${depends}" ]]; then
     depends="libtorrent${libtorrent_compact_version}, libcurl4, zlib1g, libcrypto3 | libssl3, libtinfo6, libncursesw6"
   fi
+  if qbcompile::libcurl::bundled "${libtorrent_version}"; then
+    if objdump -p "${package_dir}/usr/bin/rtorrent" | awk '$1 == "NEEDED" { print $2 }' | grep -q '^libcurl'; then
+      mflibs::shell::text::red "rTorrent links the system libcurl; its libtorrent carries a private one."
+      exit 1
+    fi
+    depends="$(printf '%s' "${depends}" | sed -E 's/(^|, )libcurl4[^,]*//; s/^, //')"
+  fi
   _resolve_ssl_fallback() {
     local _d="$1"
     local cand_crypto cand_ssl cand_ssl11
@@ -303,17 +314,12 @@ EOF
   mflibs::shell::text::blue "Packaging rTorrent version ${rtorrent_version}..."
   qbcompile::dpkg-deb::status &
   status_pid=$!
-  dpkg-deb --build "${package_dir}" "${rtorrent_deb_storage}/rtorrent_${rtorrent_version}-${rtorrent_build_rev}_amd64.deb" 2>&1 | sudo tee -a "${mflibs_log_location}" >/dev/null
+  dpkg-deb --build "${package_dir}" "${rtorrent_deb_file}" 2>&1 | sudo tee -a "${mflibs_log_location}" >/dev/null
   rc=${PIPESTATUS[0]}
   wait "${status_pid}"
   kill "${status_pid}" >/dev/null 2>&1 || true
   [[ ${rc} -eq 0 ]] || {
     mflibs::shell::text::red "Failed to create rTorrent .deb package."
-    exit 1
-  }
-  rtorrent_deb_file=$(find "${rtorrent_deb_storage}/" -maxdepth 1 -type f -name "rtorrent*.deb" | head -n 1)
-  [[ -z ${rtorrent_deb_file} ]] && {
-    mflibs::shell::text::red "No .deb file found for rTorrent."
     exit 1
   }
   qbcompile::verify::deb "${rtorrent_deb_file}"

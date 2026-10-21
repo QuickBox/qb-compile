@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ################################################################################
 # @file_name: compile-libtorrent
-# @version: 1.0.8
+# @version: 1.0.9
 # @project_name: qb-compile
 # @description: Compilation script for libtorrent (rakshasa) for qb-compile
 #
@@ -48,8 +48,10 @@ qbcompile::compile::libtorrent() {
   mkdir -p "${libtorrent_deb_storage}"
   # version + existing
   qbcompile::get::libtorrent_version
+  local libtorrent_build_rev
+  libtorrent_build_rev="$(qbcompile::rakshasa::build_rev "libtorrent" "${libtorrent_version}")"
   declare -xg libtorrent_deb_file
-  libtorrent_deb_file="${libtorrent_deb_storage}/libtorrent${libtorrent_compact_version}_${libtorrent_version}-1build1_amd64.deb"
+  libtorrent_deb_file="${libtorrent_deb_storage}/libtorrent${libtorrent_compact_version}_${libtorrent_version}-${libtorrent_build_rev}_amd64.deb"
   if ! qbcompile::check_existing_deb_or_binary "${libtorrent_deb_file}"; then
     screen -S libtorrent_compile -X quit >/dev/null
     return 0
@@ -116,6 +118,19 @@ qbcompile::compile::libtorrent() {
   export CPPFLAGS="-I/usr/include"
   multiarch="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo x86_64-linux-gnu)"
   export LDFLAGS="-L/usr/lib/${multiarch}"
+  # private static libcurl on hosts whose system libcurl is too old for 0.16
+  local -a curl_configure_args=()
+  local package_description="libtorrent (rakshasa) for rTorrent and other applications"
+  if qbcompile::libcurl::bundled "${libtorrent_version}"; then
+    local libtorrent_src_dir="${PWD}"
+    qbcompile::compile::libcurl
+    cd "${libtorrent_src_dir}" || {
+      mflibs::shell::text::red "Failed to return to the libtorrent directory."
+      exit 1
+    }
+    curl_configure_args=("LIBCURL_CFLAGS=$(qbcompile::libcurl::flags cflags)" "LIBCURL_LIBS=$(qbcompile::libcurl::flags libs)")
+    package_description="libtorrent (rakshasa) for rTorrent, with libcurl ${libcurl_version} built in"
+  fi
   # autogen / autoreconf
   mflibs::shell::text::yellow "Using autogen.sh and configure."
   if [[ -f "./autogen.sh" ]]; then
@@ -139,6 +154,7 @@ qbcompile::compile::libtorrent() {
     --prefix=/usr \
     --libdir="/usr/lib/${multiarch}" \
     --disable-static \
+    "${curl_configure_args[@]}" \
     2>&1 | sudo tee -a "${mflibs_log_location}" >/dev/null
   [[ ${PIPESTATUS[0]} -eq 0 ]] || {
     mflibs::shell::text::red "Failed to configure libtorrent."
@@ -171,6 +187,12 @@ qbcompile::compile::libtorrent() {
       -e 's/(^|[[:space:]])--(libdir|enable-shared|disable-static)[^[:space:]]*//g' \
       -e "s|^Cflags:.*$|Cflags: -I/usr/include|" \
       -e "s|^Libs:.*$|Libs: -L/usr/lib/${multiarch} -ltorrent|" "${pc}" || true
+    # the private libcurl is inside libtorrent.so, so consumers need no libcurl
+    if [[ ${#curl_configure_args[@]} -gt 0 ]]; then
+      sudo sed -i -E \
+        -e '/^Requires\.private:/s/,[[:space:]]*libcurl//' \
+        -e 's|^Libs\.private:.*$|Libs.private: -pthread|' "${pc}"
+    fi
   fi
   # package dir
   installed_size=$(du -sk "${install_dir}" | awk '{print $1}')
@@ -197,7 +219,10 @@ EOF
   # prefer libssl1.1 if present on the system.
   depends=""
   libfile="$(find "${package_dir}/usr/lib" -type f -name 'libtorrent.so.*' | head -n1)"
-  if command -v dpkg-shlibdeps >/dev/null 2>&1 && [[ -n "${libfile}" ]]; then
+  if [[ ${#curl_configure_args[@]} -gt 0 ]]; then
+    qbcompile::libcurl::verify "${libfile}"
+    depends="$(qbcompile::libcurl::depends "${libfile}")" || exit 1
+  elif command -v dpkg-shlibdeps >/dev/null 2>&1 && [[ -n "${libfile}" ]]; then
     dpkg-shlibdeps -O "${libfile}" >"${package_dir}/DEBIAN/substvars" 2>/dev/null || true
     depends="$(awk -F= '/^shlibs:Depends=/{print $2}' "${package_dir}/DEBIAN/substvars" 2>/dev/null | sed 's/^[[:space:]]*//' || true)"
   fi
@@ -224,12 +249,12 @@ EOF
   # control
   cat >"${package_dir}/DEBIAN/control" <<EOF
 Package: libtorrent${libtorrent_compact_version}
-Version: ${libtorrent_version}-1build1
+Version: ${libtorrent_version}-${libtorrent_build_rev}
 Section: libs
 Priority: optional
 Architecture: amd64
 Maintainer: ${maintainer}
-Description: libtorrent (rakshasa) for rTorrent and other applications
+Description: ${package_description}
 Depends: ${depends}
 Installed-Size: ${installed_size}
 EOF
@@ -238,7 +263,7 @@ EOF
   mflibs::shell::text::blue "Packaging libtorrent version ${libtorrent_version}..."
   qbcompile::dpkg-deb::status &
   status_pid=$!
-  dpkg-deb --build "${package_dir}" "${libtorrent_deb_storage}/libtorrent${libtorrent_compact_version}_${libtorrent_version}-1build1_amd64.deb" 2>&1 | sudo tee -a "${mflibs_log_location}" >/dev/null
+  dpkg-deb --build "${package_dir}" "${libtorrent_deb_file}" 2>&1 | sudo tee -a "${mflibs_log_location}" >/dev/null
   rc=${PIPESTATUS[0]}
   wait "${status_pid}"
   kill "${status_pid}" >/dev/null 2>&1 || true
@@ -247,11 +272,6 @@ EOF
     exit 1
   }
   # verify
-  libtorrent_deb_file=$(find "${libtorrent_deb_storage}/" -maxdepth 1 -type f -name "libtorrent${libtorrent_compact_version}*.deb" | head -n 1)
-  [[ -z ${libtorrent_deb_file} ]] && {
-    mflibs::shell::text::red "No .deb file found for libtorrent."
-    exit 1
-  }
   qbcompile::verify::deb "${libtorrent_deb_file}"
   declare -xg libtorrent_md5_hash
   libtorrent_md5_hash=$(md5sum "${libtorrent_deb_file}" | awk '{ print $1 }')

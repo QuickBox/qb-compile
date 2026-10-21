@@ -122,6 +122,8 @@ The newest upstream tag is not always one you can link against.
   sudo qb-compile --rtorrent --rtorrent-version 0.16.11 --libtorrent-version 0.16.11
   ```
 
+- libtorrent 0.16 runs libcurl on its network thread, and the libcurl that Ubuntu 22.04 (7.81.0) and Ubuntu 24.04 (8.5.0) ship makes it abort. On those two releases the 0.16 build links a private static libcurl into `libtorrent.so`, from a signature-verified curl.se release pinned in `qbcompile::get::libcurl_version` (`QBCOMPILE_LIBCURL_VERSION` overrides it). Its symbols stay private, the system `libcurl4` package is left alone, and the libtorrent and rTorrent packages of that pair move to a new build revision together.
+
 ### Build parallelism
 
 Every module routes its job count through `qbcompile::build::jobs` in `src/context/essentials.sh`, so a run never uses every core. The default leaves about 25% of cores free (8 cores gives 6 jobs, 16 gives 12). To set a hard value:

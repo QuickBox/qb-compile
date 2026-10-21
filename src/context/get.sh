@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ################################################################################
 # @file_name: get
-# @version: 1.0.15
+# @version: 1.0.16
 # @project_name: qb-compile
 # @description: Get context for qb-compile script
 #
@@ -154,6 +154,21 @@ qbcompile::get::gcc_version() {
   #gcc_version_path=$(echo "${gcc_version}" | cut -d. -f1-2)
   #gcc_version_path="12.2"
   mflibs::shell::text::green "Latest GCC version: ${gcc_version}"
+}
+
+################################################################################
+# @description: Function to get the libcurl version built into libtorrent 0.16
+#   on hosts whose system libcurl is too old for it. The version is pinned so a
+#   change is a reviewed edit here; QBCOMPILE_LIBCURL_VERSION overrides it.
+# @noargs
+# @output: libcurl version
+# @example: qbcompile::get::libcurl_version
+# @break
+################################################################################
+qbcompile::get::libcurl_version() {
+  declare -xg libcurl_version="${QBCOMPILE_LIBCURL_VERSION:-8.23.0}"
+  [[ ${libcurl_version} =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { mflibs::shell::text::red "Invalid libcurl version: ${libcurl_version}" && exit 1; }
+  mflibs::shell::text::cyan "Using libcurl version: ${libcurl_version}"
 }
 
 ################################################################################

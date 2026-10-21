@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ################################################################################
 # @file_name: essentials
-# @version: 1.0.12
+# @version: 1.0.13
 # @project_name: qb-compile
 # @description: Essential functions for qb-compile
 #
@@ -218,6 +218,10 @@ qbcompile::install::dependencies() {
   # Install additional dependencies for libtorrent (for rTorrent)
   if [[ ${compile_libtorrent} == true ]]; then
     mflibs::log "apt-get install -y autoconf automake libtool pkg-config libssl-dev libcurl4-openssl-dev libcppunit-dev" || fix_broken_install
+    # libtorrent 0.16 on Ubuntu 22.04/24.04 links a private static libcurl
+    if [[ ${codename} == "jammy" || ${codename} == "noble" ]]; then
+      mflibs::log "apt-get install -y gnupg xz-utils ca-certificates libnghttp2-dev libbrotli-dev libzstd-dev libidn2-dev libpsl-dev zlib1g-dev" || fix_broken_install
+    fi
   fi
   # Install additional dependencies for rTorrent
   if [[ ${compile_rtorrent} == true ]]; then

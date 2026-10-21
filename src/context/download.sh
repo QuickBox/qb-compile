@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ################################################################################
 # @file_name: download
-# @version: 1.0.12
+# @version: 1.0.13
 # @project_name: qb-compile
 # @description: Download context for qb-compile script
 #
@@ -74,6 +74,44 @@ qbcompile::download::qb-compile() {
   # Clean up
   rm -rf "${tmp_dir}"
   mflibs::shell::text::green "qb-compile downloaded to /opt/qb-compile"
+}
+
+################################################################################
+# @description: Function to download the libcurl source tarball and verify its
+#   signature against the curl release key (Daniel Stenberg). The key is fetched
+#   from its published location, and only a good signature from the pinned
+#   primary key fingerprint is accepted.
+# @noargs
+# @example: qbcompile::download::libcurl_tarball
+# @break
+################################################################################
+qbcompile::download::libcurl_tarball() {
+  local curl_release_fpr="27EDEAF22F3ABCEB50DB9A125CC908FDB71E12C2"
+  local tarball="${temp_dir:-/opt/qb-compile/builds}/curl-${libcurl_version}.tar.xz"
+  local gnupg_home status
+  mflibs::shell::text::blue "Downloading libcurl ${libcurl_version} source..."
+  rm -f "${tarball}" "${tarball}.asc"
+  if ! curl -fsSL -o "${tarball}" "https://curl.se/download/curl-${libcurl_version}.tar.xz" ||
+    ! curl -fsSL -o "${tarball}.asc" "https://curl.se/download/curl-${libcurl_version}.tar.xz.asc"; then
+    mflibs::shell::text::red "Failed to download the libcurl ${libcurl_version} tarball or its signature."
+    exit 1
+  fi
+  gnupg_home=$(mktemp -d -t qbcompile-gnupg-XXXX)
+  chmod 0700 "${gnupg_home}"
+  if ! curl -fsSL "https://daniel.haxx.se/mykey.asc" | gpg --batch --quiet --homedir "${gnupg_home}" --import >/dev/null 2>&1; then
+    rm -rf "${gnupg_home}"
+    mflibs::shell::text::red "Failed to import the curl release key."
+    exit 1
+  fi
+  status=$(gpg --batch --homedir "${gnupg_home}" --status-fd 1 --verify "${tarball}.asc" "${tarball}" 2>/dev/null || true)
+  gpgconf --homedir "${gnupg_home}" --kill all >/dev/null 2>&1 || true
+  rm -rf "${gnupg_home}"
+  if ! grep -q '^\[GNUPG:\] GOODSIG ' <<<"${status}" ||
+    [[ $(awk '$2 == "VALIDSIG" { print $NF; exit }' <<<"${status}") != "${curl_release_fpr}" ]]; then
+    mflibs::shell::text::red "libcurl ${libcurl_version} signature is not a good signature from the curl release key; refusing to build."
+    exit 1
+  fi
+  mflibs::shell::text::green "Verified curl-${libcurl_version}.tar.xz against the curl release key."
 }
 
 ################################################################################

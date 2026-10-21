@@ -2,7 +2,7 @@
 ################################################################################
 # <START METADATA>
 # @file_name: qb-compile
-# @version: 1.2.719
+# @version: 1.2.720
 # @project_name: qb-compile
 # @brief: This script compiles qbittorrent-nox, Qt6, libtorrent-rasterbar, libtorrent,
 # rtorrent, transmission, Python, and deluge from source based on user-defined options.
@@ -130,7 +130,7 @@ qbcompile::environment::init() {
     qbcompile::import help, \
       download,essentials,get,update,view, \
       compile-boost,compile-cmake,compile-deluge,compile-gcc,compile-intel-media-drivers, \
-      compile-libtorrent,compile-libtorrent-rasterbar,compile-python, \
+      compile-libcurl,compile-libtorrent,compile-libtorrent-rasterbar,compile-python, \
       compile-python3-libtorrent,compile-qbittorrent,compile-qt6,compile-rtorrent, \
       compile-transmission,compile-xmlrpc-c
     # Create a temporary directory for .deb file storage
