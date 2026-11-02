@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ################################################################################
 # @file_name: compile-rtorrent
-# @version: 1.0.11
+# @version: 1.0.12
 # @project_name: qb-compile
 # @description: Compilation script for rTorrent for qb-compile
 #
@@ -111,6 +111,12 @@ qbcompile::compile::rtorrent() {
   export CFLAGS="-O2 -g"
   export CXXFLAGS="-O2 -g -Wall -pthread"
   export CPPFLAGS="-I/usr/include"
+  # rTorrent before 0.15 aborts at start ("buffer overflow detected") under the stricter
+  # _FORTIFY_SOURCE=3 that Ubuntu 24.04's compiler turns on by default. Build those
+  # releases at the standard level 2, which the other distros already use.
+  if dpkg --compare-versions "${rtorrent_version}" lt "0.15"; then
+    CPPFLAGS+=" -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2"
+  fi
   multiarch="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo x86_64-linux-gnu)"
   export LDFLAGS="-L/usr/lib/${multiarch}"
   # Prefer freshly built libtorrent if it exists (staged install)
