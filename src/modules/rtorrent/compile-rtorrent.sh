@@ -251,6 +251,11 @@ qbcompile::compile::rtorrent() {
   local curl_lib="-lcurl"
   qbcompile::libcurl::bundled "${libtorrent_version}" && curl_lib=""
   ALL_LIBS="${NC_LIBS} ${LT_LIBS} ${curl_lib} -lz -lcrypto -lpthread"
+  # LIBS on the make line replaces the one configure wrote, so the xmlrpc-c libraries
+  # configure found must be carried over here or the link loses every xmlrpc_* symbol.
+  if [[ ${xmlrpc_flag} == "--with-xmlrpc-c" ]]; then
+    ALL_LIBS+=" $(xmlrpc-c-config server-util --libs)"
+  fi
   # build
   qbcompile::build::status &
   status_pid=$!
