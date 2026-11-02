@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 ################################################################################
 # @file_name: compile-rtorrent
-# @version: 1.0.10
+# @version: 1.0.11
 # @project_name: qb-compile
 # @description: Compilation script for rTorrent for qb-compile
 #
@@ -190,14 +190,27 @@ qbcompile::compile::rtorrent() {
   if [[ -d "${staged_lt_libdir}" ]]; then
     LT_LIBS="-L${staged_lt_libdir} ${LT_LIBS}"
   fi
-  # configure (system dirs; xmlrpc tinyxml2 + ncurses)
-  mflibs::shell::text::blue "Configuring rTorrent with xmlrpc-tinyxml2 and ncurses..."
+  # XML-RPC backend. rTorrent 0.15 and later carry tinyxml2. Older releases only
+  # know xmlrpc-c: their configure ignores --with-xmlrpc-tinyxml2 and builds with
+  # no XML-RPC at all, so rTorrent then refuses the SCGI socket ruTorrent needs
+  # ("XMLRPC not supported"). They need xmlrpc-c-config on the PATH: Debian's
+  # libxmlrpc-core-c3-dev for 0.9.x, the packaged xmlrpc-c for 0.10.x.
+  local xmlrpc_flag="--with-xmlrpc-tinyxml2"
+  if dpkg --compare-versions "${rtorrent_version}" lt "0.15"; then
+    xmlrpc_flag="--with-xmlrpc-c"
+    command -v xmlrpc-c-config >/dev/null 2>&1 || {
+      mflibs::shell::text::red "rTorrent ${rtorrent_version} needs xmlrpc-c-config (xmlrpc-c); install it before this build."
+      exit 1
+    }
+  fi
+  # configure (system dirs; XML-RPC backend above + ncurses)
+  mflibs::shell::text::blue "Configuring rTorrent with ${xmlrpc_flag#--with-} and ncurses..."
   CPPFLAGS="${CPPFLAGS} ${LT_CFLAGS}" \
     CXXFLAGS="${CXXFLAGS} ${LT_CFLAGS}" \
     ./configure \
     --prefix=/usr \
     --libdir="/usr/lib/${multiarch}" \
-    --with-xmlrpc-tinyxml2 \
+    "${xmlrpc_flag}" \
     --with-ncurses \
     2>&1 | sudo tee -a "${mflibs_log_location}" >/dev/null
   [[ ${PIPESTATUS[0]} -eq 0 ]] || {
@@ -261,6 +274,26 @@ qbcompile::compile::rtorrent() {
     mflibs::shell::text::red "Install to staging failed"
     exit 1
   }
+  # Link checks on the built binary, before it is packaged. A pre-0.15 build
+  # without xmlrpc-c cannot serve ruTorrent; a binary linked against another
+  # release's libtorrent (left installed on the host) cannot start beside the
+  # libtorrent package it ships with.
+  local rt_bin="${install_dir}/usr/bin/rtorrent" rt_needed lt_needed lt_deb_match=0 lt_paired
+  rt_needed="$(objdump -p "${rt_bin}" 2>/dev/null | awk '$1 == "NEEDED" { print $2 }')"
+  if [[ ${xmlrpc_flag} == "--with-xmlrpc-c" ]] && ! grep -q '^libxmlrpc_server' <<<"${rt_needed}"; then
+    mflibs::shell::text::red "rTorrent ${rtorrent_version} was built without xmlrpc-c; it would refuse ruTorrent's SCGI socket."
+    exit 1
+  fi
+  lt_needed="$(grep -m1 '^libtorrent\.so\.' <<<"${rt_needed}" || true)"
+  for lt_paired in "${deb_storage}/${codename}/binary-amd64/libtorrent-rakshasa/"*"_${libtorrent_version}-"*"_amd64.deb"; do
+    [[ -f ${lt_paired} ]] || continue
+    dpkg-deb -c "${lt_paired}" 2>/dev/null | grep -qE "/${lt_needed//./\\.}( |$)" && lt_deb_match=1
+  done
+  if [[ -z ${lt_needed} || ${lt_deb_match} -ne 1 ]]; then
+    mflibs::shell::text::red "rTorrent ${rtorrent_version} links ${lt_needed:-no libtorrent}, which no packaged libtorrent ${libtorrent_version} provides."
+    exit 1
+  fi
+  mflibs::shell::text::green "Link check passed: ${lt_needed}, ${xmlrpc_flag#--with-}"
   # package
   installed_size=$(du -sk "${install_dir}" | awk '{print $1}')
   package_dir="${temp_dir:-/opt/qb-compile/builds}/rtorrent_package"
